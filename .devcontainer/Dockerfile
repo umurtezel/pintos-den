@@ -13,12 +13,6 @@ RUN apt update && apt install -y \
     vim \
     && apt clean
 
-COPY ../pintos/src/utils/pintos /usr/local/bin/pintos
-RUN chmod +x /usr/local/bin/pintos
-
-COPY ../pintos/src/utils/Pintos.pm /usr/local/bin/Pintos.pm
-RUN chmod +x /usr/local/bin/Pintos.pm
-
 # Set up a user for development
 ARG USERNAME=vscode
 ARG USER_UID=1000
