@@ -88,13 +88,22 @@ struct thread
     char name[16];                      /* Name (for debugging purposes). */
     uint8_t *stack;                     /* Saved stack pointer. */
     int priority;                       /* Priority. */
+
+    int nice;               /* İş parçacığının kibarlık (iyilik) derecesi */
+    int recent_cpu;         /* İş parçacığının ne kadar CPU kullandığı (Sabit Noktalı) */
+
     struct list_elem allelem;           /* List element for all threads list. */
 
     /* Shared between thread.c and synch.c. */
     struct list_elem elem;              /* List element. */
 
-    /* Uyandırılacağı zamanı (tick olarak) tutar. */
-    int64_t wakeup_tick;
+    int64_t wakeup_tick;                /* Alarm clock için uyanma zamanı */
+
+    /* --- PRIORITY DONATION İÇİN EKLENENLER --- */
+    int base_priority;                  /* Thread'in bağışlar hariç yalın önceliği */
+    struct lock *wait_on_lock;          /* Thread'in şu an edinmek için beklediği kilit */
+    struct list donations;              /* Bu thread'e yapılmış olan tüm bağışların listesi */
+    struct list_elem donation_elem;     /* Değişkenin donations listesinde durabilmesi için eleman */
     
 #ifdef USERPROG
     /* Owned by userprog/process.c. */
@@ -129,6 +138,8 @@ const char *thread_name (void);
 void thread_exit (void) NO_RETURN;
 void thread_yield (void);
 
+bool thread_compare_priority (const struct list_elem *a, const struct list_elem *b, void *aux);
+
 /* Performs some operation on thread t, given auxiliary data AUX. */
 typedef void thread_action_func (struct thread *t, void *aux);
 void thread_foreach (thread_action_func *, void *);
@@ -140,5 +151,16 @@ int thread_get_nice (void);
 void thread_set_nice (int);
 int thread_get_recent_cpu (void);
 int thread_get_load_avg (void);
+
+void thread_reorder_ready_list (void);
+
+bool thread_compare_donate_priority (const struct list_elem *a, const struct list_elem *b, void *aux);
+
+void thread_update_priority (struct thread *t);
+
+/* MLFQS Hesaplama Fonksiyonları */
+void mlfqs_increment_recent_cpu (void);
+void mlfqs_update_load_avg_and_recent_cpu (void);
+void mlfqs_update_priority (void);
 
 #endif /* threads/thread.h */
