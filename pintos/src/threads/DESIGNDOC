@@ -1,0 +1,142 @@
+---- GRUP ----
+
+>> Grup üyelerinizin adlarını ve e-posta adreslerini doldurun.
+
+Umur Tezel <umur.tezel@ogr.deu.edu.tr>  
+
+---- ÖN HAZIRLIKLAR ----
+
+>> Teslimatınızla ilgili herhangi bir ön hazırlık yorumunuz varsa lütfen burada belirtin.
+Bu proje tamamen bireysel olarak yürütülmüş ve tamamlanmıştır. Herhangi bir grup çalışması yapılmamıştır.
+
+>> Pintos dokümantasyonu, ders kitabı, ders notları dışında, teslimatınızı hazırlarken başvurduğunuz çevrimdışı veya çevrimiçi kaynakları belirtiniz.
+* Gemini AI: Gelişmiş Zamanlayıcı (MLFQS) formüllerinin sabit noktalı aritmetiğe (fixed-point arithmetic) dökülmesi ve test aşamasında karşılaşılan senkronizasyon/zaman aşımı (timeout) hatalarının ayıklanmasında (debugging) mentörlük ve mantıksal doğrulama desteği alınmıştır.
+* Sabit noktalı aritmetik (Fixed-Point Arithmetic) kavramları için Stanford CS140 işletim sistemleri slaytları.
+
+                 ALARM SAATİ
+                 ===========
+
+---- VERİ YAPILARI ----
+
+>> A1: Her yeni veya değiştirilen `struct` veya `struct` üyesi, global veya statik değişken, `typedef` veya enumerasyonun beyanını buraya kopyalayın. Her birinin amacını 25 kelime veya daha az bir şekilde tanımlayın.
+
+**`threads/thread.h` içindeki `struct thread` yapısına eklenenler:**
+* `int64_t wakeup_tick;` : İş parçacığının (thread) uykudan uyanması gereken mutlak zamanlayıcı (timer) vuruş değerini tutar.
+
+**`devices/timer.c` içine eklenen global değişken:**
+* `static struct list sleep_list;` : `timer_sleep()` çağıran ve uykuda olan iş parçacıklarını tutan bekleme listesidir.
+
+---- ALGORİTMALAR ----
+
+>> A2: timer_sleep() fonksiyonuna yapılan bir çağrıda neler olduğunu, zamanlayıcı kesme işleyicisinin etkilerini kısaca açıklayın.
+Bir thread `timer_sleep()` çağırdığında, mevcut `ticks` değerine argüman olarak gelen bekleme süresi eklenir ve `t->wakeup_tick` olarak kaydedilir. Ardından thread `sleep_list`'e eklenir ve `thread_block()` ile işlemciyi bırakarak uykuya dalar. Zamanlayıcı kesme işleyicisi (`timer_interrupt()`) her saat vuruşunda çalışır; `sleep_list`'i gezer ve `wakeup_tick` değerine ulaşan thread'leri listeden çıkarıp `thread_unblock()` ile tekrar hazır (ready) durumuna getirir.
+
+>> A3: Zamanlayıcı kesme işleyicisi içinde harcanan süreyi minimize etmek için hangi adımlar atılmaktadır?
+`timer_interrupt` fonksiyonunun olabildiğince hızlı çalışması için, `sleep_list` içindeki kontrol işlemi olabildiğince basit tutulmuştur. Eğer daha büyük ölçekli bir sistem tasarlansaydı, liste `wakeup_tick` sırasına göre sıralı (ordered) tutularak sadece listenin başındaki elemana bakılması sağlanabilirdi; ancak mevcut haliyle de CPU'yu meşgul eden döngüler (busy-waiting) tamamen ortadan kaldırılmıştır.
+
+---- SENKRONİZASYON ----
+
+>> A4: Birden fazla iş parçacığı aynı anda timer_sleep() fonksiyonunu çağırdığında yarış koşulları nasıl engellenir?
+`timer_sleep()` fonksiyonunun en başında `intr_disable()` çağrılarak donanım kesmeleri kapatılır. Bu sayede thread uyuma listesine eklenirken ve bloklanırken başka hiçbir thread'in araya girmesine veya veri yapılarını (liste) bozmasına izin verilmez.
+
+>> A5: timer_sleep() fonksiyonu çağrıldığında bir zamanlayıcı kesmesi meydana gelirse yarış koşulları nasıl engellenir?
+Yine aynı şekilde kesmelerin (interrupts) kapatılması sayesinde, `timer_sleep()` içerisindeyken `timer_interrupt()` donanımsal olarak tetiklenemez. Böylece zamanlayıcının uykudaki listeyi eşzamanlı okuması veya değiştirmesi engellenmiş olur.
+
+---- GEREKÇE ----
+
+>> A6: Bu tasarımı neden seçtiniz? Diğer düşündüğünüz tasarımlara kıyasla hangi açılardan daha üstün olduğunu düşünüyorsunuz?
+Orijinal Pintos kodundaki `thread_yield()` tabanlı "busy-waiting" (meşgul bekleme) yaklaşımı işlemciyi %100 meşgul ediyordu. Bir bekleme listesi (`sleep_list`) kullanarak uyuyan thread'leri işletim sisteminin zamanlayıcısından tamamen çıkardık. Bu sayede işlemci gücü sadece gerçekten çalışması gereken thread'lere ayrılarak sistem verimliliği maksimize edildi.
+
+             ÖNCELİKLE PLANLAMA
+             ===================
+
+---- VERİ YAPILARI ----
+
+>> B1: Her yeni veya değiştirilen `struct` veya `struct` üyesi, global veya statik değişken, `typedef` veya enumerasyonun beyanını buraya kopyalayın. Her birinin amacını 25 kelime veya daha az bir şekilde tanımlayın.
+
+**`threads/thread.h` içindeki `struct thread` yapısına eklenenler:**
+* `int base_priority;` : İş parçacığının bağış almadan önceki orijinal önceliğini tutar.
+* `struct list donations;` : Bu iş parçacığına öncelik bağışında bulunan diğer iş parçacıklarının listesi.
+* `struct list_elem donation_elem;` : Bağış yapan iş parçacığının, hedef thread'in `donations` listesine eklenebilmesi için kullanılan liste elemanı.
+* `struct lock *wait_on_lock;` : İş parçacığının o an beklemekte olduğu kilidin (lock) referansı.
+
+>> B2: Öncelik bağışını izlemek için kullanılan veri yapısını açıklayın. Bir iç içe bağışı ASCII sanatı ile diyagramlayın. (Alternatif olarak, bir .png dosyası gönderin.)
+Öncelik bağışlarını takip etmek için her thread'in içinde bir `donations` listesi bulunur. Bir kilit üzerinde bloklanan her thread, kilidi tutan thread'in `donations` listesine eklenir. Kilit serbest bırakıldığında, sadece o kilitle ilgili bağışlar listeden silinir.
+
+İç İçe Bağışlama (Nested Donation) Diyagramı:
+  [Thread A]  ---bekler---> (Kilit 1)
+  (Öncelik 63)                 |
+                               v
+                          [Thread B] ---bekler---> (Kilit 2)
+                        (Asıl Öncelik:31)               |
+                        (Yeni Öncelik:63)               v
+                                                   [Thread C]
+                                                (Asıl Öncelik: 0)
+                                                (Yeni Öncelik:63)
+
+---- ALGORİTMALAR ----
+
+>> B3: Bir kilit, semafor veya koşul değişkeni için bekleyen en yüksek öncelikli iş parçacığının ilk önce uyanmasını nasıl sağlarsınız?
+Bekleme listeleri (örneğin `sema->waiters` veya `cond->waiters`) uyandırılma işlemi öncesinde `list_sort` veya sıralı ekleme (`list_insert_ordered`) kullanılarak iş parçacıklarının önceliklerine göre sıralanır. `cond_signal` fonksiyonuna özel olarak yazdığımız `cond_sema_cmp_priority` fonksiyonu ile koşul değişkenlerinde de en yüksek öncelikli thread ilk sıraya alınır.
+
+>> B4: lock_acquire() fonksiyonu bir öncelik bağışı oluşturduğunda olaylar sırasını açıklayın. İç içe bağış nasıl işlenir?
+A iş parçacığı, B'nin tuttuğu bir kilidi almak istediğinde `wait_on_lock` değişkeni bu kilit olarak ayarlanır ve A, B'nin `donations` listesine eklenir. İç içe bağışlama için bir `while` döngüsü başlatılır. Bu döngü, mevcut kilidin sahibini bulur, önceliğini kıyaslar ve gerekiyorsa yükseltir. Daha sonra sahibin de başka bir kilit bekleyip beklemediğine (`wait_on_lock != NULL`) bakar ve bu işlemi 8 derinliğe (`depth < 8`) kadar zincirleme olarak gerçekleştirir.
+
+>> B5: lock_release() fonksiyonu, yüksek öncelikli bir iş parçacığının beklediği bir kilit üzerinde çağrıldığında olaylar sırasını açıklayın.
+Kilit serbest bırakıldığında, mevcut iş parçacığının `donations` listesi taranır ve sadece bu bırakılan kilit için bekleyen thread'ler listeden silinir. Ardından thread'in önceliği geçici olarak `base_priority` değerine çekilir. Listede kalan diğer bağışlar kontrol edilerek aralarındaki en yüksek öncelik değeri belirlenir ve thread'in asıl önceliği bu yeni yüksek değere eşitlenir.
+
+---- SENKRONİZASYON ----
+
+>> B6: thread_set_priority() fonksiyonunda potansiyel bir yarış koşulunu açıklayın ve uygulamanızın bunu nasıl engellediğini açıklayın. Bu yarış koşulunu engellemek için bir kilit kullanabilir misiniz?
+Eğer thread kendi önceliğini değiştirirken o esnada bir öncelik bağışı alırsa veri tutarsızlığı yaşanabilir. Bunu engellemek için öncelik güncelleme işlemlerinde kesmeler (`intr_disable()`) kapatılarak işlemin atomik olması sağlanmıştır. Kilit (lock) kullanamayız çünkü kilitler uykuda beklemeye (sleep) neden olabilir ve kesme bağlamında (interrupt context) kilit alınamaz.
+
+---- GEREKÇE ----
+
+>> B7: Bu tasarımı neden seçtiniz? Diğer düşündüğünüz tasarımlara kıyasla hangi açılardan daha üstün olduğunu düşünüyorsunuz?
+`donations` listesi yaklaşımı, özellikle Çoklu Bağışlama (Multiple Donation) durumlarında, hangi önceliğin hangi kilitten geldiğinin ayrımını kusursuz şekilde yapar. İç içe bağışlama (Nest) için kullanılan 8 seviyelik `depth` sınırı, işletim sistemini olası dairesel kilitlenme (deadlock) kaynaklı sonsuz döngülerden (kernel panic) korur ve preemption kurallarını anında uygular.
+
+              GELİŞMİŞ PLANLAMA
+              ==================
+
+---- VERİ YAPILARI ----
+
+>> C1: Her yeni veya değiştirilen `struct` veya `struct` üyesi, global veya statik değişken, `typedef` veya enumerasyonun beyanını buraya kopyalayın. Her birinin amacını 25 kelime veya daha az bir şekilde tanımlayın.
+
+**`threads/thread.h` içindeki `struct thread` yapısına eklenenler:**
+* `int nice;` : Thread'in diğerlerine karşı "kibarlık" seviyesi (0 ile 20 arası).
+* `int recent_cpu;` : Thread'in son zamanlarda kullandığı CPU miktarının sabit noktalı (fixed-point) gösterimi.
+
+**`threads/thread.c` içine eklenen global değişken:**
+* `int load_avg;` : Sistemin son 1 dakikadaki ortalama yükünü temsil eden sabit noktalı global değişken.
+
+---- ALGORİTMALAR ----
+
+>> C2: A, B ve C iş parçacıklarının nice değerleri sırasıyla 0, 1 ve 2. Her birinin recent_cpu değeri 0. Aşağıdaki tabloyu doldurun ve her bir iş parçacığı için her bir zamanlayıcı tikinden sonra yapılan planlama kararını, öncelik ve recent_cpu değerlerini gösterin:
+
+timer  recent_cpu    priority   thread  
+ticks   A   B   C   A   B   C   to run  
+-----  --  --  --  --  --  --   ------  
+ 0      0   0   0  63  61  59     A  
+ 4      4   0   0  62  61  59     A  
+ 8      8   0   0  61  61  59     B  
+12      8   4   0  61  60  59     A  
+16     12   4   0  60  60  59     B  
+20     12   8   0  60  59  59     A  
+24     16   8   0  59  59  59     C  
+28     16   8   4  59  59  58     B  
+32     16  12   4  59  58  58     A  
+36     20  12   4  58  58  58     C  
+
+>> C3: Planlayıcı spesifikasyonundaki herhangi bir belirsizlik tablodaki değerleri belirsiz hale getirdi mi? Eğer öyleyse, bunları çözmek için hangi kuralı kullandınız? Bu, planlayıcınızın davranışıyla uyumlu mu?
+Aynı önceliğe sahip thread'lerin kimin çalışacağı (Round-Robin eşitliği) konusunda belirsizlik vardır. Çözüm olarak Pintos'un standart kuyruk mekanizması kullanılmış ve eşit önceliklerde, sırasını bekleyen diğer thread'e öncelik verilmiştir. Bu, BSD zamanlayıcısının adalet mantığıyla tam uyumludur.
+
+>> C4: Planlamayı kod içinde ve kesme bağlamı dışında yapılan işlerin maliyeti arasında nasıl böldüğünüz, performansı nasıl etkiler?
+`recent_cpu` artırımı her saat vuruşunda sadece çalışan thread için yapıldığı için O(1) maliyetlidir ve son derece hızlıdır. Tüm thread'lerin güncellenmesi ve `load_avg` hesaplaması O(N) maliyetli olduğundan, performansı düşürmemesi adına bu ağır yük saniyede sadece bir kez (her 100 tikte) çalıştırılacak şekilde ayrıştırılmıştır.
+
+---- GEREKÇE ----
+
+>> C5: Tasarımınızı kısaca eleştirin, tasarım seçimlerinizdeki avantajları ve dezavantajları belirtin. Bu kısmı üzerinde daha fazla zaman harcayabilseydiniz, tasarımınızı nasıl geliştirmek veya iyileştirmek isterdiniz?
+Avantajı, `fixed-point.h` kütüphanesi sayesinde formüllerin kod içerisinde okunabilir ve izole olmasıdır. Dezavantajı ise saniyede bir kez tüm listeyi (`all_list`) dönerek O(N) işlem yapmasıdır. Daha fazla zaman olsaydı, her thread'in kendi hesaplamasını sisteme yük bindirmeden yapacağı, olaya dayalı (event-driven) bir güncelleme mimarisi kurardım.
+
+>> C6: Görev, sabit nokta matematiği için ayrıntılı aritmetiği açıklasa da, bunu nasıl uygulayacağınız konusunda size açık bir yön bırakmaktadır. Bunu yaptığınız şekilde uygulamaya karar vermenizin nedeni nedir? Sabit nokta matematiği için bir soyutlama katmanı, yani soyut veri tipi ve/veya sabit nokta sayıları manipüle etmek için bir dizi fonksiyon veya makro oluşturduysanız, bunu neden yaptınız? Yapmadıysanız, neden yapmadınız?
+İşletim sistemi çekirdeği (kernel) kesme işlemleri (interrupt context) sırasında Kayan Nokta Ünitesi (FPU) yazmaçlarını kaydetmediği için float veya double kullanımı sistemi doğrudan çökertecektir. Bunu çözmek için `threads/fixed-point.h` adında ayrı bir makro kütüphanesi yazdım. Fonksiyon yerine Makro (`#define`) kullanmamın temel sebebi, kesme işleyicileri gibi her mikrosaniyenin kritik olduğu bir bölgede fonksiyon çağırma (function overhead) maliyetini tamamen sıfıra indirmektir.
