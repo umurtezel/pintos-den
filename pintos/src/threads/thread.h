@@ -4,6 +4,7 @@
 #include <debug.h>
 #include <list.h>
 #include <stdint.h>
+#include "threads/synch.h"
 
 /* States in a thread's life cycle. */
 enum thread_status
@@ -80,6 +81,20 @@ typedef int tid_t;
    only because they are mutually exclusive: only a thread in the
    ready state is on the run queue, whereas only a thread in the
    blocked state is on a semaphore wait list. */
+
+/* Bir sürecin (process) ebeveyni ile iletişim kurmasını sağlayan durum yapısı */
+struct child_status 
+  {
+    tid_t tid;                          /* Çocuğun Thread ID'si */
+    int exit_status;                    /* Çocuğun çıkış kodu (başarılıysa 0) */
+    bool is_exited;                     /* Çocuk tamamen kapandı mı? */
+    bool was_waited;                    /* Ebeveyn bu çocuğu daha önce bekledi mi? (Sadece 1 kez beklenebilir) */
+    struct semaphore wait_sema;         /* Ebeveynin uyuyarak çocuğu bekleyeceği semafor */
+    struct list_elem elem;              /* Ebeveynin çocuk listesinde durması için bağlayıcı */
+    bool load_success;           /* Yükleme başarılı mı? */
+    struct semaphore load_sema;  /* Yükleme için bekleme semaforu */
+  };
+   
 struct thread
   {
     /* Owned by thread.c. */
@@ -88,7 +103,6 @@ struct thread
     char name[16];                      /* Name (for debugging purposes). */
     uint8_t *stack;                     /* Saved stack pointer. */
     int priority;                       /* Priority. */
-
     int nice;               /* İş parçacığının kibarlık (iyilik) derecesi */
     int recent_cpu;         /* İş parçacığının ne kadar CPU kullandığı (Sabit Noktalı) */
 
@@ -104,6 +118,13 @@ struct thread
     struct lock *wait_on_lock;          /* Thread'in şu an edinmek için beklediği kilit */
     struct list donations;              /* Bu thread'e yapılmış olan tüm bağışların listesi */
     struct list_elem donation_elem;     /* Değişkenin donations listesinde durabilmesi için eleman */
+
+    struct list child_list;             /* Ebeveynin sahip olduğu tüm çocukların listesi */
+    struct child_status *child_info;    /* Thread'in KENDİ bilgisi (kendi ebeveynine durumunu bildirmek için) */
+
+    struct file *fd_table[128];         /* Açık dosya tanımlayıcıları dizisi */
+    int fd_last;                        /* Bir sonraki verilecek fd numarası */
+    struct file *exec_file;             /* Kendisini çalıştıran executable dosya */
     
 #ifdef USERPROG
     /* Owned by userprog/process.c. */

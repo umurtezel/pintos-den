@@ -8,6 +8,7 @@
 #include "threads/flags.h"
 #include "threads/interrupt.h"
 #include "threads/intr-stubs.h"
+#include "threads/malloc.h"
 #include "threads/palloc.h"
 #include "threads/switch.h"
 #include "threads/synch.h"
@@ -226,6 +227,22 @@ thread_create (const char *name, int priority,
 
   /* Add to run queue. */
   thread_unblock (t);
+
+  /* --- ÇOCUK YARATILDIĞINDA EBEVEYNİNE BAĞLA --- */
+  struct child_status *child = malloc (sizeof (struct child_status));
+  if (child != NULL) 
+    {
+      child->tid = tid;
+      child->is_exited = false;
+      child->was_waited = false;
+      child->exit_status = 0;
+      sema_init (&child->wait_sema, 0);
+      child->load_success = false;
+      sema_init (&child->load_sema, 0);
+      
+      t->child_info = child;
+      list_push_back (&thread_current ()->child_list, &child->elem);
+    }
 
   if (t->priority > thread_current ()->priority)
     thread_yield ();
@@ -564,7 +581,18 @@ init_thread (struct thread *t, const char *name, int priority)
   t->base_priority = priority;
   list_init (&t->donations);
   t->wait_on_lock = NULL;
+
+  list_init (&t->child_list);
+  t->child_info = NULL;
+
+  t->fd_last = 2; /* 0 ve 1 standart Girdi/Çıktı için rezerve edilmiştir */
+  for (int i = 0; i < 128; i++)
+    t->fd_table[i] = NULL;
+
+  t->exec_file = NULL;
+
   t->magic = THREAD_MAGIC;
+
 
   old_level = intr_disable ();
   list_push_back (&all_list, &t->allelem);

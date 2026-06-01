@@ -5,6 +5,8 @@
 #include "threads/interrupt.h"
 #include "threads/thread.h"
 
+void sys_exit (int status);
+
 /* Number of page faults processed. */
 static long long page_fault_cnt;
 
@@ -119,7 +121,8 @@ kill (struct intr_frame *f)
    can find more information about both of these in the
    description of "Interrupt 14--Page Fault Exception (#PF)" in
    [IA32-v3a] section 5.15 "Exception and Interrupt Reference". */
-static void
+
+   static void
 page_fault (struct intr_frame *f) 
 {
   bool not_present;  /* True: not-present page, false: writing r/o page. */
@@ -127,17 +130,10 @@ page_fault (struct intr_frame *f)
   bool user;         /* True: access by user, false: access by kernel. */
   void *fault_addr;  /* Fault address. */
 
-  /* Obtain faulting address, the virtual address that was
-     accessed to cause the fault.  It may point to code or to
-     data.  It is not necessarily the address of the instruction
-     that caused the fault (that's f->eip).
-     See [IA32-v2a] "MOV--Move to/from Control Registers" and
-     [IA32-v3a] 5.15 "Interrupt 14--Page Fault Exception
-     (#PF)". */
+  /* Obtain faulting address... */
   asm ("movl %%cr2, %0" : "=r" (fault_addr));
 
-  /* Turn interrupts back on (they were only off so that we could
-     be assured of reading CR2 before it changed). */
+  /* Turn interrupts back on... */
   intr_enable ();
 
   /* Count page faults. */
@@ -148,9 +144,16 @@ page_fault (struct intr_frame *f)
   write = (f->error_code & PF_W) != 0;
   user = (f->error_code & PF_U) != 0;
 
-  /* To implement virtual memory, delete the rest of the function
-     body, and replace it with code that brings in the page to
-     which fault_addr refers. */
+  /* --- KRİTİK DEĞİŞİKLİK BURADA --- */
+  /* Eğer hafıza hatasını (bad-read, bad-write, bad-jump) kullanıcı programı yaptıysa
+     hiçbir şey yazdırmadan, testin beklediği gibi -1 ile programı kapat. */
+  if (user) 
+    {
+      sys_exit (-1);
+    }
+  /* -------------------------------- */
+
+  /* Eğer hata kernel'dan kaynaklanıyorsa standart Pintos çökme mesajını bas */
   printf ("Page fault at %p: %s error %s page in %s context.\n",
           fault_addr,
           not_present ? "not present" : "rights violation",
@@ -158,4 +161,3 @@ page_fault (struct intr_frame *f)
           user ? "user" : "kernel");
   kill (f);
 }
-

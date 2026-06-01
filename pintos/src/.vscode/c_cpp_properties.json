@@ -1,0 +1,18 @@
+{
+    "configurations": [
+        {
+            "name": "Pintos",
+            "includePath": [
+                "${workspaceFolder}/pintos/src",
+                "${workspaceFolder}/pintos/src/lib",
+                "${workspaceFolder}/pintos/src/lib/kernel",
+                "${workspaceFolder}/pintos/src/threads",
+                "${workspaceFolder}/pintos/src/userprog"
+            ],
+            "compilerPath": "/usr/bin/gcc",
+            "cStandard": "c99",
+            "intelliSenseMode": "linux-gcc-x86"
+        }
+    ],
+    "version": 4
+}

@@ -1,142 +1,115 @@
----- GRUP ----
 
 >> Grup üyelerinizin adlarını ve e-posta adreslerini doldurun.
 
 Umur Tezel <umur.tezel@ogr.deu.edu.tr>  
 
----- ÖN HAZIRLIKLAR ----
+---- AÇIKLAMA ----
+>> Pintos dokümantasyonu, ders kitabı, ders notları dışında
+>> başvurduğunu ve ders personeliz offline veya online kaynakları belirtin.
 
->> Teslimatınızla ilgili herhangi bir ön hazırlık yorumunuz varsa lütfen burada belirtin.
-Bu proje tamamen bireysel olarak yürütülmüş ve tamamlanmıştır. Herhangi bir grup çalışması yapılmamıştır.
+Pintos resmi dokümantasyonu veişletim sistemleri ders notları temel alınmıştır. Ek olarak, geliştirme süreci boyunca karşılaşılan hata ayıklama (debugging) işlemlerinde, "Kernel Panic" ve "Page Fault" gibi hataların kök nedenlerinin bulunmasında, süreç senkronizasyonu (semaforlar) ve bellek güvenliği algoritmalarının mantığının oluşturulmasında yapay zeka asistanından (Gemini) rehber olarak faydalanılmıştır.
 
->> Pintos dokümantasyonu, ders kitabı, ders notları dışında, teslimatınızı hazırlarken başvurduğunuz çevrimdışı veya çevrimiçi kaynakları belirtiniz.
-* Gemini AI: Gelişmiş Zamanlayıcı (MLFQS) formüllerinin sabit noktalı aritmetiğe (fixed-point arithmetic) dökülmesi ve test aşamasında karşılaşılan senkronizasyon/zaman aşımı (timeout) hatalarının ayıklanmasında (debugging) mentörlük ve mantıksal doğrulama desteği alınmıştır.
-* Sabit noktalı aritmetik (Fixed-Point Arithmetic) kavramları için Stanford CS140 işletim sistemleri slaytları.
-
-                 ALARM SAATİ
-                 ===========
+                ARGÜMAN VERME
+               ================
 
 ---- VERİ YAPILARI ----
 
->> A1: Her yeni veya değiştirilen `struct` veya `struct` üyesi, global veya statik değişken, `typedef` veya enumerasyonun beyanını buraya kopyalayın. Her birinin amacını 25 kelime veya daha az bir şekilde tanımlayın.
+>> A1: Her yeni veya değiştirilen `struct' ya da `struct' üyesi, global veya statik değişken, `typedef' ya da
+>> enumerasyonun bildirimini buraya yapın. Her birinin amacını 25 kelimeyle açıklayın.
 
-**`threads/thread.h` içindeki `struct thread` yapısına eklenenler:**
-* `int64_t wakeup_tick;` : İş parçacığının (thread) uykudan uyanması gereken mutlak zamanlayıcı (timer) vuruş değerini tutar.
-
-**`devices/timer.c` içine eklenen global değişken:**
-* `static struct list sleep_list;` : `timer_sleep()` çağıran ve uykuda olan iş parçacıklarını tutan bekleme listesidir.
+Argümanları yığına (stack) aktarmak için yeni bir global yapı veya struct tanımlanmasına gerek duyulmamıştır. Tüm işlemler `process_execute` ve `setup_stack` içinde yerel işaretçiler (pointer) kullanılarak gerçekleştirilmiştir.
 
 ---- ALGORİTMALAR ----
 
->> A2: timer_sleep() fonksiyonuna yapılan bir çağrıda neler olduğunu, zamanlayıcı kesme işleyicisinin etkilerini kısaca açıklayın.
-Bir thread `timer_sleep()` çağırdığında, mevcut `ticks` değerine argüman olarak gelen bekleme süresi eklenir ve `t->wakeup_tick` olarak kaydedilir. Ardından thread `sleep_list`'e eklenir ve `thread_block()` ile işlemciyi bırakarak uykuya dalar. Zamanlayıcı kesme işleyicisi (`timer_interrupt()`) her saat vuruşunda çalışır; `sleep_list`'i gezer ve `wakeup_tick` değerine ulaşan thread'leri listeden çıkarıp `thread_unblock()` ile tekrar hazır (ready) durumuna getirir.
+>> A2: Argüman ayrıştırmayı nasıl gerçekleştirdiğinizi kısaca açıklayın. 
+>> argv[] elemanlarının doğru sırada olmalarını nasıl sağlıyorsunuz?
+>> Yığın sayfasının taşmasını nasıl engelliyorsunuz?
 
->> A3: Zamanlayıcı kesme işleyicisi içinde harcanan süreyi minimize etmek için hangi adımlar atılmaktadır?
-`timer_interrupt` fonksiyonunun olabildiğince hızlı çalışması için, `sleep_list` içindeki kontrol işlemi olabildiğince basit tutulmuştur. Eğer daha büyük ölçekli bir sistem tasarlansaydı, liste `wakeup_tick` sırasına göre sıralı (ordered) tutularak sadece listenin başındaki elemana bakılması sağlanabilirdi; ancak mevcut haliyle de CPU'yu meşgul eden döngüler (busy-waiting) tamamen ortadan kaldırılmıştır.
+Argüman ayrıştırma işlemi için komut satırı dizgisi (string), `strtok_r` fonksiyonu ile boşluklardan kelimelere bölünmüştür. Elde edilen argümanlar önce sağdan sola doğru yığına (stack) itilmiş, böylece `argv[0]` elemanının en düşük hafıza adresinde yer alması sağlanmıştır. Yığın taşmasını engellemek için, argüman dizgisinin toplam uzunluğu makul bir sınırda (Pintos'un 128 byte'lık terminal komut sınırı) tutulmuş ve tek bir 4KB'lık sayfanın dışına çıkılması önlenmiştir.
+
+---- GEREKÇE ----
+
+>> A3: Pintos neden strtok_r() fonksiyonunu implement ederken strtok() fonksiyonunu implement etmemiştir?
+
+`strtok()` fonksiyonu ayrıştırma işlemi sırasındaki konumunu dahili (static) bir global değişkende saklamaktadır. Bu durum, birden fazla iş parçacığının (thread) aynı anda string ayrıştırması yaptığı durumlarda veri yarışına (race condition) yol açmaktadır. `strtok_r()` ise durumu dışarıdan verilen bir `save_ptr` değişkeninde tuttuğu için eşzamanlı kullanıma daha uygundur.
+
+>> A4: Pintos'ta, çekirdek komutları çalıştırılabilir bir ad ve argümanlar olarak ayırır. Unix benzeri sistemlerde, kabuk bu ayrımı yapar.
+>> Unix yaklaşımının en az iki avantajını belirtin.
+
+1. **Çekirdek Basitliği:** Ayrıştırma işlemi kullanıcı alanında (shell) yapıldığı için işletim sistemi çekirdeği (kernel) gereksiz kodlardan arındırılmış, daha küçük ve güvenli hale getirilmiştir.
+2. **Esneklik ve Genişletilebilirlik:** Kabuk (shell) argümanları ayırırken `*` (wildcard), `>` (yönlendirme), `|` (pipe) ve `$USER` gibi ortam değişkeni genişletmelerini çekirdeği değiştirmeden kolayca uygulayabilmektedir.
+
+                 SİSTEM ÇAĞRILARI
+                 ============
+
+---- VERİ YAPILARI ----
+
+>> B1: Her yeni veya değiştirilen `struct' ya da `struct' üyesi, global veya statik değişken, `typedef' ya da
+>> enumerasyonun bildirimini buraya yapın. Her birinin amacını 25 kelimeyle açıklayın.
+
+- `struct child_status`: Ebeveyn ve çocuk süreç arasındaki senkronizasyonu (wait ve exec için) sağlayan yapıdır. İçinde semaforlar (`wait_sema`, `load_sema`) ve çıkış durumu bulunur.
+- `struct list child_list` (thread içine): Ebeveynin sahip olduğu çocukların listesidir.
+- `struct child_status *child_info` (thread içine): İş parçacığının kendi çıkış kodunu ebeveynine iletmesi için kullandığı işaretçidir.
+- `struct file *fd_table[128]` (thread içine): Sürece özel açık dosya tanımlayıcıları dizisidir.
+- `int fd_last` (thread içine): Atanacak bir sonraki boş fd numarasıdır.
+- `struct file *exec_file` (thread içine): Sürecin kendi çalıştırılabilir (executable) dosyasını kilitli tutması için kullanılan işaretçidir.
+- `struct lock filesys_lock` (syscall.c içine): Dosya sistemine aynı anda sadece bir iş parçacığının erişmesini sağlayan küresel kilittir.
+
+>> B2: Dosya tanımlayıcılarının açık dosyalarla nasıl ilişkilendirildiğini açıklayın.
+>> Dosya tanımlayıcıları tüm işletim sistemi genelinde mi yoksa yalnızca tek bir işlemde mi benzersizdir?
+
+Dosya tanımlayıcıları (fd), her sürece ait `struct thread` içindeki `fd_table` adlı statik bir dizinin indeks numaraları olarak tasarlanmıştır. Bir dosya açıldığında `fd_last` indeksi dosyaya atanmakta ve tabloya kaydedilmektedir. Bu nedenle fd numaraları sistem genelinde değil, **yalnızca tek bir işlem (process) içinde** benzersiz ve yereldir.
+
+---- ALGORİTMALAR ----
+
+>> B3: Çekirdekten kullanıcı verilerini okuma ve yazma kodunuzu açıklayın.
+
+Kullanıcı yığınından gelen işaretçiler (pointer) kullanılmadan önce oluşturulan `check_ptr` ve `check_buffer` fonksiyonlarından geçirilmektedir. Bu fonksiyonlar aracılığıyla adresin NULL olup olmadığı, `PHYS_BASE` altında (kullanıcı alanında) olup olmadığı ve `pagedir_get_page` ile haritalanmış bir fiziksel sayfaya denk gelip gelmediği kontrol edilmektedir. Güvenliyse veriye erişilmekte, değilse süreç anında `-1` hata koduyla sonlandırılmaktadır.
+
+>> B4: Bir sistem çağrısı, kullanıcı alanından çekirdeğe 4,096 baytlık bir veriyi kopyalıyorsa, 
+>> bu sayfa tablosunun (örneğin pagedir_get_page() çağrıları) en az ve en fazla kaç kere denetlenmesi gerektiğini açıklayın.
+>> Peki, yalnızca 2 baytlık veriyi kopyalayan bir sistem çağrısı için nasıl bir durum olur? Bu sayılar üzerinde iyileştirme yapılabilir mi?
+
+Eğer 4096 baytlık veri tam olarak sayfa sınırında (page boundary) başlıyorsa **en az 1 kere**, eğer sayfa ortasında başlayıp iki farklı sayfaya taşıyorsa **en fazla 2 kere** denetlenmesi gerekmektedir. 2 baytlık bir veri kopyalanırken de büyük ihtimalle aynı sayfa içinde olacağından 1 kere, tam sayfa sınırına denk gelirse en fazla 2 kere denetlenmektedir. Geliştirilen algoritmada byte-byte kontrol eden döngü, yalnızca sayfa sınırlarına gelindiğinde `pagedir_get_page` çağıracak şekilde optimize edilebilir.
+
+>> B5: "wait" sistem çağrısının implementasyonunu kısaca açıklayın ve işlem sonlandırma ile nasıl etkileşime girdiğini belirtin.
+
+Ebeveyn süreç `wait` çağırdığında, hedef çocuk sürecin `child_status` yapısını kendi listesinde arar ve bulduğunda `sema_down(&wait_sema)` ile bekleme durumuna geçer. Çocuk süreç işini bitirip `sys_exit` çağırdığında, kendi çıkış kodunu ebeveynine ait bu yapıya kaydeder ve `sema_up(&wait_sema)` ile ebeveyni uyandırır. Uyanan ebeveyn çıkış kodunu okur, yapıyı hafızadan (`free`) temizler ve geri döner.
+
+>> B6: Kullanıcı tarafından belirtilen bir adreste kullanıcı programı belleğine yapılacak her erişim, kötü bir işaretçi değeri nedeniyle başarısız olabilir.
+>> Bu tür erişimlerin işlem sonlandırılmasına yol açması gerekir. Sistem çağrıları bu tür erişimlerle doludur...
+>> Hata yönetiminin kodun asıl işlevini gölgelemesini nasıl engellersiniz? Kaynakların serbest bırakılmasını nasıl sağlarsınız? Örnek verin.
+
+Bu sorunu çözmek için hata yönetimi **merkezileştirilmiştir**. Tüm bellek doğrulama işlemleri `check_ptr` ve `check_buffer` fonksiyonlarında gerçekleştirilmektedir. Eğer bir adres geçersizse, bu fonksiyonlar doğrudan `sys_exit(-1)` çağırarak süreci sonlandırmaktadır. `sys_exit` fonksiyonu ise kapanmadan önce sürecin açık unuttuğu tüm dosyaları (`fd_table`), kilitlediği çalışan dosyayı (`exec_file`) ve kendi kaynaklarını otomatik olarak temizlemektedir. 
+
+Örneğin: `SYS_WRITE` sistem çağrısı içinde arabelleği (buffer) doğrulamak için sadece `check_buffer(buffer, size);` yazılmıştır. Bu sayede her çağrı içine tekrar eden kontroller yazılmasından kaçınılmış ve kod karmaşası önlenmiştir. Eğer arabellek hatalıysa, kilit alınmadan sistem `sys_exit` ile güvenlice kapatılmaktadır.
 
 ---- SENKRONİZASYON ----
 
->> A4: Birden fazla iş parçacığı aynı anda timer_sleep() fonksiyonunu çağırdığında yarış koşulları nasıl engellenir?
-`timer_sleep()` fonksiyonunun en başında `intr_disable()` çağrılarak donanım kesmeleri kapatılır. Bu sayede thread uyuma listesine eklenirken ve bloklanırken başka hiçbir thread'in araya girmesine veya veri yapılarını (liste) bozmasına izin verilmez.
+>> B7: "exec" sistem çağrısı, yeni çalıştırılabilir dosya yüklenirse -1 döner, bu nedenle yeni çalıştırılabilir dosya yüklenmeden önce dönemez.
+>> Kodunuz bunun nasıl sağlandığını nasıl garanti eder? Yükleme başarı/durum bilgisini "exec" çağrısını yapan işleme nasıl iletirsiniz?
 
->> A5: timer_sleep() fonksiyonu çağrıldığında bir zamanlayıcı kesmesi meydana gelirse yarış koşulları nasıl engellenir?
-Yine aynı şekilde kesmelerin (interrupts) kapatılması sayesinde, `timer_sleep()` içerisindeyken `timer_interrupt()` donanımsal olarak tetiklenemez. Böylece zamanlayıcının uykudaki listeyi eşzamanlı okuması veya değiştirmesi engellenmiş olur.
+Ebeveyn süreç, `process_execute` çağırdığında yeni thread yaratıldıktan hemen sonra `sema_down(&child->load_sema)` çağırarak beklemeye başlar. Çocuk süreç (yeni thread) `load` fonksiyonunu bitirdiğinde, yükleme sonucunu (true/false) `child_status` içindeki `load_success` değişkenine kaydeder ve `sema_up(&load_sema)` ile ebeveyni uyandırır. Ebeveyn ancak bu sinyali aldıktan sonra sonucu değerlendirip geri dönmektedir.
 
----- GEREKÇE ----
+>> B8: P ana işlemi ile C çocuk işlemi düşünün. P, C çıkmadan önce wait(C) çağırırken doğru senkronizasyonu ve yarış durumlarını nasıl engellersiniz?
+>> C çıktıktan sonra nasıl? Her iki durumda da tüm kaynakların serbest bırakılmasını nasıl sağlarsınız? P, beklemeden C çıkmadan önce yada 
+>> C çıktıktan sonra terminasyon yaparsa ne olur? Özel durumlar var mı?
 
->> A6: Bu tasarımı neden seçtiniz? Diğer düşündüğünüz tasarımlara kıyasla hangi açılardan daha üstün olduğunu düşünüyorsunuz?
-Orijinal Pintos kodundaki `thread_yield()` tabanlı "busy-waiting" (meşgul bekleme) yaklaşımı işlemciyi %100 meşgul ediyordu. Bir bekleme listesi (`sleep_list`) kullanarak uyuyan thread'leri işletim sisteminin zamanlayıcısından tamamen çıkardık. Bu sayede işlemci gücü sadece gerçekten çalışması gereken thread'lere ayrılarak sistem verimliliği maksimize edildi.
-
-             ÖNCELİKLE PLANLAMA
-             ===================
-
----- VERİ YAPILARI ----
-
->> B1: Her yeni veya değiştirilen `struct` veya `struct` üyesi, global veya statik değişken, `typedef` veya enumerasyonun beyanını buraya kopyalayın. Her birinin amacını 25 kelime veya daha az bir şekilde tanımlayın.
-
-**`threads/thread.h` içindeki `struct thread` yapısına eklenenler:**
-* `int base_priority;` : İş parçacığının bağış almadan önceki orijinal önceliğini tutar.
-* `struct list donations;` : Bu iş parçacığına öncelik bağışında bulunan diğer iş parçacıklarının listesi.
-* `struct list_elem donation_elem;` : Bağış yapan iş parçacığının, hedef thread'in `donations` listesine eklenebilmesi için kullanılan liste elemanı.
-* `struct lock *wait_on_lock;` : İş parçacığının o an beklemekte olduğu kilidin (lock) referansı.
-
->> B2: Öncelik bağışını izlemek için kullanılan veri yapısını açıklayın. Bir iç içe bağışı ASCII sanatı ile diyagramlayın. (Alternatif olarak, bir .png dosyası gönderin.)
-Öncelik bağışlarını takip etmek için her thread'in içinde bir `donations` listesi bulunur. Bir kilit üzerinde bloklanan her thread, kilidi tutan thread'in `donations` listesine eklenir. Kilit serbest bırakıldığında, sadece o kilitle ilgili bağışlar listeden silinir.
-
-İç İçe Bağışlama (Nested Donation) Diyagramı:
-  [Thread A]  ---bekler---> (Kilit 1)
-  (Öncelik 63)                 |
-                               v
-                          [Thread B] ---bekler---> (Kilit 2)
-                        (Asıl Öncelik:31)               |
-                        (Yeni Öncelik:63)               v
-                                                   [Thread C]
-                                                (Asıl Öncelik: 0)
-                                                (Yeni Öncelik:63)
-
----- ALGORİTMALAR ----
-
->> B3: Bir kilit, semafor veya koşul değişkeni için bekleyen en yüksek öncelikli iş parçacığının ilk önce uyanmasını nasıl sağlarsınız?
-Bekleme listeleri (örneğin `sema->waiters` veya `cond->waiters`) uyandırılma işlemi öncesinde `list_sort` veya sıralı ekleme (`list_insert_ordered`) kullanılarak iş parçacıklarının önceliklerine göre sıralanır. `cond_signal` fonksiyonuna özel olarak yazdığımız `cond_sema_cmp_priority` fonksiyonu ile koşul değişkenlerinde de en yüksek öncelikli thread ilk sıraya alınır.
-
->> B4: lock_acquire() fonksiyonu bir öncelik bağışı oluşturduğunda olaylar sırasını açıklayın. İç içe bağış nasıl işlenir?
-A iş parçacığı, B'nin tuttuğu bir kilidi almak istediğinde `wait_on_lock` değişkeni bu kilit olarak ayarlanır ve A, B'nin `donations` listesine eklenir. İç içe bağışlama için bir `while` döngüsü başlatılır. Bu döngü, mevcut kilidin sahibini bulur, önceliğini kıyaslar ve gerekiyorsa yükseltir. Daha sonra sahibin de başka bir kilit bekleyip beklemediğine (`wait_on_lock != NULL`) bakar ve bu işlemi 8 derinliğe (`depth < 8`) kadar zincirleme olarak gerçekleştirir.
-
->> B5: lock_release() fonksiyonu, yüksek öncelikli bir iş parçacığının beklediği bir kilit üzerinde çağrıldığında olaylar sırasını açıklayın.
-Kilit serbest bırakıldığında, mevcut iş parçacığının `donations` listesi taranır ve sadece bu bırakılan kilit için bekleyen thread'ler listeden silinir. Ardından thread'in önceliği geçici olarak `base_priority` değerine çekilir. Listede kalan diğer bağışlar kontrol edilerek aralarındaki en yüksek öncelik değeri belirlenir ve thread'in asıl önceliği bu yeni yüksek değere eşitlenir.
-
----- SENKRONİZASYON ----
-
->> B6: thread_set_priority() fonksiyonunda potansiyel bir yarış koşulunu açıklayın ve uygulamanızın bunu nasıl engellediğini açıklayın. Bu yarış koşulunu engellemek için bir kilit kullanabilir misiniz?
-Eğer thread kendi önceliğini değiştirirken o esnada bir öncelik bağışı alırsa veri tutarsızlığı yaşanabilir. Bunu engellemek için öncelik güncelleme işlemlerinde kesmeler (`intr_disable()`) kapatılarak işlemin atomik olması sağlanmıştır. Kilit (lock) kullanamayız çünkü kilitler uykuda beklemeye (sleep) neden olabilir ve kesme bağlamında (interrupt context) kilit alınamaz.
+- **P, C'den önce beklerse:** P `sema_down` ile bekleme durumuna geçer. C kapanırken çıkış kodunu yazar ve `sema_up` işlemi yapar. Yarış durumu (race condition) semafor kullanılarak önlenmiştir.
+- **C daha önce çıkarsa:** C çıkış kodunu yazar ve `sema_up` yapar (semafor değeri 1 olur). P sonradan `wait` çağırdığında `sema_down` işlemi uyutmadan anında geçer ve çıkış kodunu alır.
+- **Kaynak Serbest Bırakma:** P `wait` işlemini bitirdiğinde C'nin `child_status` bloğu `free` fonksiyonu ile temizlenir. Eğer P, çocuklarını hiç beklemeden sonlanırsa (terminasyon), P'nin `process_exit` fonksiyonunda bir döngü çalıştırılarak kendi `child_list`'sindeki tüm sahipsiz çocuk statü blokları serbest bırakılır ve hafıza sızıntısı (memory leak) önlenir.
 
 ---- GEREKÇE ----
 
->> B7: Bu tasarımı neden seçtiniz? Diğer düşündüğünüz tasarımlara kıyasla hangi açılardan daha üstün olduğunu düşünüyorsunuz?
-`donations` listesi yaklaşımı, özellikle Çoklu Bağışlama (Multiple Donation) durumlarında, hangi önceliğin hangi kilitten geldiğinin ayrımını kusursuz şekilde yapar. İç içe bağışlama (Nest) için kullanılan 8 seviyelik `depth` sınırı, işletim sistemini olası dairesel kilitlenme (deadlock) kaynaklı sonsuz döngülerden (kernel panic) korur ve preemption kurallarını anında uygular.
+>> B9: Kullanıcı belleğine çekirdekten erişimi, seçtiğiniz şekilde implement etmenizin nedeni nedir?
 
-              GELİŞMİŞ PLANLAMA
-              ==================
+İki ana yöntemden "Önce doğrula, sonra eriş" (pagedir kontrolü) yöntemi tercih edilmiştir. Bu yöntemin "Page fault (MMU)" yöntemine kıyasla performansı bir miktar daha düşük olsa da, implementasyonu çok daha güvenli ve sadedir. İşletim sistemi kaynakları (dosya kilitleri, semaforlar) tahsis edilmeden önce adresler kontrol edildiği için, hata anında kilitleri açmak gibi karmaşık kurtarma senaryolarından kaçınılmıştır.
 
----- VERİ YAPILARI ----
+>> B10: Dosya tanımlayıcıları tasarımınızın avantajlarını veya dezavantajlarını nasıl görüyorsunuz?
 
->> C1: Her yeni veya değiştirilen `struct` veya `struct` üyesi, global veya statik değişken, `typedef` veya enumerasyonun beyanını buraya kopyalayın. Her birinin amacını 25 kelime veya daha az bir şekilde tanımlayın.
+Dosya tanımlayıcılarının her thread'in içine statik bir dizi (`struct file *fd_table[128]`) olarak yerleştirilmesinin en büyük **avantajı**, `O(1)` karmaşıklığında anında dosya erişimi sağlaması ve implementasyonunun oldukça basit olmasıdır. **Dezavantajı** ise bir sürecin 128'den fazla dosya açmasına izin verilmemesi (limitli olması) ve süreç hiç dosya açmasa bile hafızada boş yere o dizi için alan ayrılmasıdır.
 
-**`threads/thread.h` içindeki `struct thread` yapısına eklenenler:**
-* `int nice;` : Thread'in diğerlerine karşı "kibarlık" seviyesi (0 ile 20 arası).
-* `int recent_cpu;` : Thread'in son zamanlarda kullandığı CPU miktarının sabit noktalı (fixed-point) gösterimi.
+>> B11: Varsayılan tid_t'den pid_t'ye yapılan eşleme kimlik eşlemesidir.
+>> Eğer bunu değiştirdiyseniz, yaklaşımınızın avantajları nelerdir?
 
-**`threads/thread.c` içine eklenen global değişken:**
-* `int load_avg;` : Sistemin son 1 dakikadaki ortalama yükünü temsil eden sabit noktalı global değişken.
-
----- ALGORİTMALAR ----
-
->> C2: A, B ve C iş parçacıklarının nice değerleri sırasıyla 0, 1 ve 2. Her birinin recent_cpu değeri 0. Aşağıdaki tabloyu doldurun ve her bir iş parçacığı için her bir zamanlayıcı tikinden sonra yapılan planlama kararını, öncelik ve recent_cpu değerlerini gösterin:
-
-timer  recent_cpu    priority   thread  
-ticks   A   B   C   A   B   C   to run  
------  --  --  --  --  --  --   ------  
- 0      0   0   0  63  61  59     A  
- 4      4   0   0  62  61  59     A  
- 8      8   0   0  61  61  59     B  
-12      8   4   0  61  60  59     A  
-16     12   4   0  60  60  59     B  
-20     12   8   0  60  59  59     A  
-24     16   8   0  59  59  59     C  
-28     16   8   4  59  59  58     B  
-32     16  12   4  59  58  58     A  
-36     20  12   4  58  58  58     C  
-
->> C3: Planlayıcı spesifikasyonundaki herhangi bir belirsizlik tablodaki değerleri belirsiz hale getirdi mi? Eğer öyleyse, bunları çözmek için hangi kuralı kullandınız? Bu, planlayıcınızın davranışıyla uyumlu mu?
-Aynı önceliğe sahip thread'lerin kimin çalışacağı (Round-Robin eşitliği) konusunda belirsizlik vardır. Çözüm olarak Pintos'un standart kuyruk mekanizması kullanılmış ve eşit önceliklerde, sırasını bekleyen diğer thread'e öncelik verilmiştir. Bu, BSD zamanlayıcısının adalet mantığıyla tam uyumludur.
-
->> C4: Planlamayı kod içinde ve kesme bağlamı dışında yapılan işlerin maliyeti arasında nasıl böldüğünüz, performansı nasıl etkiler?
-`recent_cpu` artırımı her saat vuruşunda sadece çalışan thread için yapıldığı için O(1) maliyetlidir ve son derece hızlıdır. Tüm thread'lerin güncellenmesi ve `load_avg` hesaplaması O(N) maliyetli olduğundan, performansı düşürmemesi adına bu ağır yük saniyede sadece bir kez (her 100 tikte) çalıştırılacak şekilde ayrıştırılmıştır.
-
----- GEREKÇE ----
-
->> C5: Tasarımınızı kısaca eleştirin, tasarım seçimlerinizdeki avantajları ve dezavantajları belirtin. Bu kısmı üzerinde daha fazla zaman harcayabilseydiniz, tasarımınızı nasıl geliştirmek veya iyileştirmek isterdiniz?
-Avantajı, `fixed-point.h` kütüphanesi sayesinde formüllerin kod içerisinde okunabilir ve izole olmasıdır. Dezavantajı ise saniyede bir kez tüm listeyi (`all_list`) dönerek O(N) işlem yapmasıdır. Daha fazla zaman olsaydı, her thread'in kendi hesaplamasını sisteme yük bindirmeden yapacağı, olaya dayalı (event-driven) bir güncelleme mimarisi kurardım.
-
->> C6: Görev, sabit nokta matematiği için ayrıntılı aritmetiği açıklasa da, bunu nasıl uygulayacağınız konusunda size açık bir yön bırakmaktadır. Bunu yaptığınız şekilde uygulamaya karar vermenizin nedeni nedir? Sabit nokta matematiği için bir soyutlama katmanı, yani soyut veri tipi ve/veya sabit nokta sayıları manipüle etmek için bir dizi fonksiyon veya makro oluşturduysanız, bunu neden yaptınız? Yapmadıysanız, neden yapmadınız?
-İşletim sistemi çekirdeği (kernel) kesme işlemleri (interrupt context) sırasında Kayan Nokta Ünitesi (FPU) yazmaçlarını kaydetmediği için float veya double kullanımı sistemi doğrudan çökertecektir. Bunu çözmek için `threads/fixed-point.h` adında ayrı bir makro kütüphanesi yazdım. Fonksiyon yerine Makro (`#define`) kullanmamın temel sebebi, kesme işleyicileri gibi her mikrosaniyenin kritik olduğu bir bölgede fonksiyon çağırma (function overhead) maliyetini tamamen sıfıra indirmektir.
+Kimlik eşlemesi (identity mapping) değiştirilmemiş ve birebir eşleme korunmuştur. Pintos gibi eğitim amaçlı bir işletim sisteminde çekirdek iş parçacığı kimliği (Kernel Thread ID) ile kullanıcı işlem kimliğini (User Process ID) aynı tutmak, fazladan karmaşık bir PID dönüşüm tablosu tutma yükünü ortadan kaldırmış; kodun yürütülme hızını ve okunabilirliğini artırmıştır.
